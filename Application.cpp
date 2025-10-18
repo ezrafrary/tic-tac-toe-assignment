@@ -1,43 +1,122 @@
 #include "Application.h"
 #include "imgui/imgui.h"
 #include "classes/TicTacToe.h"
+#include <vector>
+#include <string>
 
 namespace ClassGame {
-        //
-        // our global variables
-        //
-        TicTacToe *game = nullptr;
-        bool gameOver = false;
-        int gameWinner = -1;
-
-        //
-        // game starting point
-        // this is called by the main render loop in main.cpp
-        //
-        void GameStartUp() 
-        {
-            game = new TicTacToe();
-            game->setUpBoard();
+    //
+    // Console system
+    //
+    enum class LogLevel {
+        Info,
+        Warn,
+        Error
+    };
+    
+    struct LogEntry {
+        std::string message;
+        LogLevel level;
+    };
+    
+    struct Console {
+        std::vector<LogEntry> logs;
+        char inputBuf[256] = "";
+        bool autoScroll = true;
+        
+        void AddLog(const std::string& message, LogLevel level = LogLevel::Info) {
+            logs.push_back({message, level});
         }
-
-        //
-        // game render loop
-        // this is called by the main render loop in main.cpp
-        //
-        void RenderGame() 
-        {
-                ImGui::DockSpaceOverViewport();
-
-                //ImGui::ShowDemoWindow();
-
-                if (!game) return;
-                if (!game->getCurrentPlayer()) return;
+        
+        void Clear() {
+            logs.clear();
+        }
+        
+        const char* GetLevelPrefix(LogLevel level) {
+            switch (level) {
+                case LogLevel::Info:  return "[Info] ";
+                case LogLevel::Warn:  return "[Warn] ";
+                case LogLevel::Error: return "[Error] ";
+                default: return "";
+            }
+        }
+        
+        void Draw() {
+            ImGui::Begin("Console");
+            
+            if (ImGui::Button("Clear")) {
+                Clear();
+            }
+            ImGui::SameLine();
+            ImGui::Checkbox("Auto-scroll", &autoScroll);
+            
+            ImGui::Separator();
+            
+            ImGui::BeginChild("ScrollingRegion", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), false, ImGuiWindowFlags_HorizontalScrollbar);
+            
+            for (const auto& log : logs) {
+                ImVec4 color;
+                switch (log.level) {
+                    case LogLevel::Info:
+                        color = ImVec4(1.0f, 1.0f, 1.0f, 1.0f); 
+                        break;
+                    case LogLevel::Warn:
+                        color = ImVec4(1.0f, 1.0f, 0.0f, 1.0f);
+                        break;
+                    case LogLevel::Error:
+                        color = ImVec4(1.0f, 0.0f, 0.0f, 1.0f);
+                        break;
+                }
+                std::string fullMessage = GetLevelPrefix(log.level) + log.message;
+                ImGui::TextColored(color, "%s", fullMessage.c_str());
+            }
+            
+            if (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
+                ImGui::SetScrollHereY(1.0f);
                 
-                ImGui::Begin("Settings");
-                ImGui::Text("Current Player Number: %d", game->getCurrentPlayer()->playerNumber());
-                ImGui::Text("Current Board State: %s", game->stateString().c_str());
+            ImGui::EndChild();
+            
+            ImGui::End();
+        }
+    };
+    
+    //
+    // Global variables
+    //
+    static Console g_Console;
+    TicTacToe *game = nullptr;
+    bool gameOver = false;
+    int gameWinner = -1;
 
-                if (gameOver) {
+    //
+    // Game starting point
+    //
+    void GameStartUp() 
+    {
+        game = new TicTacToe();
+        game->setUpBoard();
+        
+        g_Console.AddLog("Player 1 (O) vs Player 2 (X)", LogLevel::Info);
+        g_Console.AddLog("Player 1's turn", LogLevel::Info);
+    }
+
+    //
+    // Game render loop
+    //
+    void RenderGame() 
+    {
+        ImGui::DockSpaceOverViewport();
+
+        if (!game) return;
+        if (!game->getCurrentPlayer()) return;
+        
+        ImGui::Begin("Settings");
+        ImGui::Text("Current Player: %d (%s)", 
+                    game->getCurrentPlayer()->playerNumber() + 1,
+                    game->getCurrentPlayer()->playerNumber() == 0 ? "O" : "X");
+        ImGui::Text("Current Board State: %s", game->stateString().c_str());
+
+        if (gameOver) {
                     ImGui::Text("Game Over!");
                     ImGui::Text("Winner: %d", gameWinner);
                     if (ImGui::Button("Reset Game")) {
@@ -49,26 +128,45 @@ namespace ClassGame {
                 }
                 ImGui::End();
 
-                ImGui::Begin("GameWindow");
-                game->drawFrame();
-                ImGui::End();
-        }
+        ImGui::Begin("GameWindow");
+        game->drawFrame();
+        ImGui::End();
+        
+        // Draw console
+        g_Console.Draw();
+    }
 
-        //
-        // end turn is called by the game code at the end of each turn
-        // this is where we check for a winner
-        //
-        void EndOfTurn() 
+    //
+    // End turn is called by the game code at the end of each turn
+    //
+    void EndOfTurn() 
+    {
+        Player *winner = game->checkForWinner();
+        if (winner)
         {
-            Player *winner = game->checkForWinner();
-            if (winner)
-            {
-                gameOver = true;
-                gameWinner = winner->playerNumber();
-            }
-            if (game->checkForDraw()) {
-                gameOver = true;
-                gameWinner = -1;
-            }
+            gameOver = true;
+            gameWinner = winner->playerNumber();
+            
+            std::string winnerName = (gameWinner == 0) ? "O" : "X";
+            g_Console.AddLog("=== GAME OVER ===", LogLevel::Warn);
+            g_Console.AddLog("Winner: Player " + std::to_string(gameWinner + 1) + 
+                           " (" + winnerName + ")", LogLevel::Info);
+            g_Console.AddLog("Congratulations!", LogLevel::Info);
+            return;
         }
+        
+        if (game->checkForDraw()) {
+            gameOver = true;
+            gameWinner = -1;
+            
+            g_Console.AddLog("=== GAME OVER ===", LogLevel::Warn);
+            g_Console.AddLog("It's a Draw! No winner.", LogLevel::Info);
+            return;
+        }
+        
+        // Log next player's turn
+        int nextPlayer = game->getCurrentPlayer()->playerNumber();
+        std::string playerName = (nextPlayer == 0) ? "O" : "X";
+        g_Console.AddLog("Player " + std::to_string(nextPlayer + 1) + " (" + playerName + ")'s turn", LogLevel::Info);
+    }
 }
