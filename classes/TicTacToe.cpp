@@ -210,7 +210,101 @@ void TicTacToe::setStateString(const std::string &s)
     }
 }
 
+int negamax(TicTacToe* game, int playerNumber, int depth, int alpha, int beta)
+{
+    // Check terminal
+    Player* winner = game->checkForWinner();
+    if (winner != nullptr) {
+        // Return score as current player - if somethings broken its prob this
+        if (winner->playerNumber() == playerNumber) {
+            return 10 - depth;  
+        } else {
+            return -10 + depth; 
+        }
+    }
+    
+    // Check for draw
+    if (game->checkForDraw()) {
+        return 0;
+    }
+    
+    int bestScore = -1000;
+    int nextPlayer = 1 - playerNumber;
+    
+    // Iterate through all
+    for (int y = 0; y < 3; y++) {
+        for (int x = 0; x < 3; x++) {
+            BitHolder& holder = game->getHolderAt(x, y);
+            if (holder.bit() == nullptr) {
+                Bit* tempPiece = new Bit();
+                //tempPiece->LoadTextureFromFile(playerNumber == 1 ? "x.png" : "o.png"); DONT LOAD THE GRAPHICS OF A TEMP PEICE SMART ONE maybe thats why it took 2 years to run
+                tempPiece->setOwner(game->getPlayerAt(playerNumber));
+                tempPiece->setPosition(holder.getPosition());
+                holder.setBit(tempPiece);
+                
+                int score = -negamax(game, nextPlayer, depth + 1, -beta, -alpha);
+                
+                holder.destroyBit();
+                
+                bestScore = std::max(bestScore, score);
+                alpha = std::max(alpha, score);
+                
+                if (alpha >= beta) {
+                    return bestScore;
+                }
+            }
+        }
+    }
+    
+    return bestScore;
+}
+
 void TicTacToe::updateAI() 
 {
-    // AI will be implemented in the next assignment
+    if (getCurrentPlayer()->playerNumber() != AI_PLAYER) {
+        return;
+    }
+    
+    int bestScore = -1000;
+    int bestX = -1;
+    int bestY = -1;
+    int nextPlayer = HUMAN_PLAYER;
+    
+    // Try all possible moves
+    for (int y = 0; y < 3; y++) {
+        for (int x = 0; x < 3; x++) {
+            BitHolder& holder = getHolderAt(x, y);
+            if (holder.bit() == nullptr) {
+                Bit* tempPiece = PieceForPlayer(AI_PLAYER);
+                tempPiece->setPosition(holder.getPosition());
+                holder.setBit(tempPiece);
+                
+                int score = -negamax(this, nextPlayer, 1, -1000, 1000);
+                
+                holder.destroyBit();
+                
+                //Update best move
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestX = x;
+                    bestY = y;
+                    
+                    if (bestScore >= 10) {
+                        break;
+                    }
+                }
+            }
+        }
+        //exit if inning move
+        if (bestScore >= 10) {
+            break;
+        }
+    }
+    
+    if (bestX != -1 && bestY != -1) {
+        BitHolder& holder = getHolderAt(bestX, bestY);
+        if (actionForEmptyHolder(&holder)) {
+            endTurn();
+        }
+    }
 }

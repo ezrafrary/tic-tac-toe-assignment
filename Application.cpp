@@ -87,6 +87,7 @@ namespace ClassGame {
     TicTacToe *game = nullptr;
     bool gameOver = false;
     int gameWinner = -1;
+    bool aiEnabled = false;
 
     //
     // Game starting point
@@ -116,17 +117,33 @@ namespace ClassGame {
                     game->getCurrentPlayer()->playerNumber() == 0 ? "O" : "X");
         ImGui::Text("Current Board State: %s", game->stateString().c_str());
 
+        // AI Toggle
+        if (ImGui::Checkbox("Enable AI (Player 2)", &aiEnabled)) {
+            if (aiEnabled) {
+                g_Console.AddLog("AI enabled for Player 2 (X)", LogLevel::Info);
+            } else {
+                g_Console.AddLog("AI disabled", LogLevel::Info);
+            }
+        }
+
         if (gameOver) {
-                    ImGui::Text("Game Over!");
-                    ImGui::Text("Winner: %d", gameWinner);
-                    if (ImGui::Button("Reset Game")) {
-                        game->stopGame();
-                        game->setUpBoard();
-                        gameOver = false;
-                        gameWinner = -1;
-                    }
-                }
-                ImGui::End();
+            ImGui::Text("Game Over!");
+            if (gameWinner == -1) {
+                ImGui::Text("Draw!");
+            } else {
+                ImGui::Text("Winner: Player %d (%s)", 
+                           gameWinner + 1,
+                           gameWinner == 0 ? "O" : "X");
+            }
+            if (ImGui::Button("Reset Game")) {
+                game->stopGame();
+                game->setUpBoard();
+                gameOver = false;
+                gameWinner = -1;
+                g_Console.AddLog("Game reset", LogLevel::Info);
+            }
+        }
+        ImGui::End();
 
         ImGui::Begin("GameWindow");
         game->drawFrame();
@@ -134,6 +151,11 @@ namespace ClassGame {
         
         // Draw console
         g_Console.Draw();
+
+        //Check if it's AI turn and make a move
+        if (!gameOver && aiEnabled && game->getCurrentPlayer()->playerNumber() == 1) {
+            game->updateAI();
+        }
     }
 
     //
